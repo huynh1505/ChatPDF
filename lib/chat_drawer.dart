@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'profile.dart';
+import 'library_page.dart';
+
 
 class ChatDrawer extends StatelessWidget {
   const ChatDrawer({super.key});
@@ -7,7 +9,10 @@ class ChatDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: MediaQuery.of(context).size.width * 0.7, // 👈 NỬA MÀN HÌNH
+      width: MediaQuery
+          .of(context)
+          .size
+          .width * 0.7, // 👈 NỬA MÀN HÌNH
       child: Drawer(
         backgroundColor: const Color(0xFF0D1117),
         child: SafeArea(
@@ -36,7 +41,19 @@ class ChatDrawer extends StatelessWidget {
 
               // 📂 MENU
               _drawerItem(Icons.chat_bubble, "ChatPDF", active: true),
-              _drawerItem(Icons.folder, "Library"),
+              _drawerItem(
+                Icons.folder,
+                "Library",
+                onTap: (context) {
+                  Navigator.pop(context); // đóng drawer
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const LibraryPage(),
+                    ),
+                  );
+                },
+              ),
               _drawerItem(Icons.create_new_folder, "New project"),
               _drawerItem(Icons.add_comment, "New chat"),
 
@@ -89,28 +106,31 @@ class ChatDrawer extends StatelessWidget {
   }
 
   // ================= DRAWER ITEM =================
-  static Widget _drawerItem(
-      IconData icon,
+  static Widget _drawerItem(IconData icon,
       String title, {
         bool active = false,
+        Function(BuildContext context)? onTap,
       }) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: active ? const Color(0xFF1F2933) : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: ListTile(
-        leading: Icon(icon, color: Colors.white),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: active ? const Color(0xFF00E676) : Colors.white,
-            fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+    return Builder(
+      builder: (context) =>
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: active ? const Color(0xFF1F2933) : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: ListTile(
+              leading: Icon(icon, color: Colors.white),
+              title: Text(
+                title,
+                style: TextStyle(
+                  color: active ? const Color(0xFF00E676) : Colors.white,
+                  fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+              onTap: onTap != null ? () => onTap(context) : null,
+            ),
           ),
-        ),
-        onTap: () {},
-      ),
     );
   }
 }
