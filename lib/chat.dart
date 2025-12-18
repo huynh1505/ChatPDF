@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:speech_to_text/speech_to_text.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'chat_drawer.dart';
 
 class ChatPage extends StatefulWidget {
@@ -13,11 +15,14 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage> {
   final TextEditingController _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   final List<_Message> _messages = [];
+  final SpeechToText _speech = SpeechToText();
 
   File? _attachedFile;
   bool _hasText = false;
   bool _isBotTyping = false;
+  bool _isListening = false;
 
   @override
   void initState() {
@@ -32,7 +37,79 @@ class _ChatPageState extends State<ChatPage> {
   @override
   void dispose() {
     _controller.dispose();
+    _scrollController.dispose();
+    _speech.stop();
     super.dispose();
+  }
+
+  // ================= AUTO SCROLL =================
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(
+          _scrollController.position.maxScrollExtent,
+        );
+      }
+    });
+  }
+
+  // ================= VOICE INPUT =================
+  Future<void> _listen() async {
+    // If already listening, stop
+    if (_isListening) {
+      await _speech.stop();
+      setState(() => _isListening = false);
+      return;
+    }
+
+    // Request microphone permission
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) {
+      _showSnack("Microphone permission denied");
+      return;
+    }
+
+    // Initialize speech recognition
+    final available = await _speech.initialize(
+      onStatus: (val) {
+        if (val == 'done' || val == 'notListening') {
+          if (mounted) {
+            setState(() => _isListening = false);
+          }
+        }
+      },
+      onError: (error) {
+        if (mounted) {
+          setState(() => _isListening = false);
+          _showSnack("Error: ${error.errorMsg}");
+        }
+      },
+    );
+
+    if (!available) {
+      _showSnack("Speech recognition not available");
+      return;
+    }
+
+    // Start listening
+    await _speech.listen(
+      localeId: 'en_US',
+      listenFor: const Duration(seconds: 30),
+      pauseFor: const Duration(seconds: 5),
+      onResult: (val) {
+        if (mounted) {
+          setState(() {
+            _controller.text = val.recognizedWords;
+            _controller.selection = TextSelection.fromPosition(
+              TextPosition(offset: _controller.text.length),
+            );
+          });
+        }
+      },
+    );
+
+    // Set listening state only after successfully starting
+    setState(() => _isListening = true);
   }
 
   // ================= PICK PDF =================
@@ -72,14 +149,19 @@ class _ChatPageState extends State<ChatPage> {
       );
       _isBotTyping = true;
     });
+    _scrollToBottom();
 
     _controller.clear();
     _attachedFile = null;
     _hasText = false;
 
+
+
     setState(() {
       _messages.add(const _Message(isUser: false, isLoading: true));
     });
+
+    _scrollToBottom();
 
     await Future.delayed(const Duration(seconds: 2));
 
@@ -94,6 +176,8 @@ class _ChatPageState extends State<ChatPage> {
       );
       _isBotTyping = false;
     });
+
+    _scrollToBottom();
   }
 
   // ================= 3 DOT MENU =================
@@ -187,8 +271,7 @@ class _ChatPageState extends State<ChatPage> {
                     Builder(
                       builder: (context) => IconButton(
                         icon: const Icon(Icons.menu, color: Colors.white),
-                        onPressed: () =>
-                            Scaffold.of(context).openDrawer(),
+                        onPressed: () => Scaffold.of(context).openDrawer(),
                       ),
                     ),
                     const Expanded(
@@ -204,8 +287,7 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.more_horiz,
-                          color: Colors.white),
+                      icon: const Icon(Icons.more_horiz, color: Colors.white),
                       onPressed: () => _showMoreMenu(context),
                     ),
                   ],
@@ -223,6 +305,7 @@ class _ChatPageState extends State<ChatPage> {
                 ),
               )
                   : ListView.builder(
+                controller: _scrollController,
                 padding: const EdgeInsets.all(16),
                 itemCount: _messages.length,
                 itemBuilder: (context, index) {
@@ -232,24 +315,20 @@ class _ChatPageState extends State<ChatPage> {
                         ? Alignment.centerRight
                         : Alignment.centerLeft,
                     child: Container(
-                      margin:
-                      const EdgeInsets.symmetric(vertical: 6),
+                      margin: const EdgeInsets.symmetric(vertical: 6),
                       padding: const EdgeInsets.all(12),
-                      constraints:
-                      const BoxConstraints(maxWidth: 280),
+                      constraints: const BoxConstraints(maxWidth: 280),
                       decoration: BoxDecoration(
                         color: msg.isUser
                             ? const Color(0xFF1A1F24)
                             : const Color(0xFF1F2933),
-                        borderRadius:
-                        BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                       child: msg.isLoading
                           ? const SizedBox(
                         height: 18,
                         width: 18,
-                        child:
-                        CircularProgressIndicator(
+                        child: CircularProgressIndicator(
                             strokeWidth: 2),
                       )
                           : Column(
@@ -259,21 +338,16 @@ class _ChatPageState extends State<ChatPage> {
                           if (msg.fileName != null)
                             Row(
                               children: [
-                                const Icon(
-                                    Icons.picture_as_pdf,
-                                    size: 16,
-                                    color: Colors.red),
+                                const Icon(Icons.picture_as_pdf,
+                                    size: 16, color: Colors.red),
                                 const SizedBox(width: 6),
                                 Expanded(
                                   child: Text(
                                     msg.fileName!,
-                                    style:
-                                    const TextStyle(
-                                        color:
-                                        Colors.white,
+                                    style: const TextStyle(
+                                        color: Colors.white,
                                         fontSize: 12),
-                                    overflow:
-                                    TextOverflow.ellipsis,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                               ],
@@ -281,39 +355,32 @@ class _ChatPageState extends State<ChatPage> {
                           if (msg.text != null)
                             Padding(
                               padding:
-                              const EdgeInsets.only(
-                                  top: 6),
+                              const EdgeInsets.only(top: 6),
                               child: Column(
                                 crossAxisAlignment:
                                 CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     msg.text!,
-                                    style:
-                                    const TextStyle(
-                                        color:
-                                        Colors.white),
+                                    style: const TextStyle(
+                                        color: Colors.white),
                                   ),
                                   if (!msg.isUser)
                                     Align(
                                       alignment:
                                       Alignment.centerRight,
                                       child: IconButton(
-                                        icon:
-                                        const Icon(
+                                        icon: const Icon(
                                           Icons.copy,
                                           size: 18,
-                                          color:
-                                          Colors.white54,
+                                          color: Colors.white54,
                                         ),
                                         onPressed: () {
                                           Clipboard.setData(
                                             ClipboardData(
-                                                text: msg
-                                                    .text!),
+                                                text: msg.text!),
                                           );
-                                          _showSnack(
-                                              "Copied");
+                                          _showSnack("Copied");
                                         },
                                       ),
                                     ),
@@ -330,8 +397,7 @@ class _ChatPageState extends State<ChatPage> {
 
             // ===== INPUT BAR =====
             Padding(
-              padding:
-              const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               child: Container(
                 padding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -349,8 +415,7 @@ class _ChatPageState extends State<ChatPage> {
                             horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
                           color: const Color(0xFF1F2933),
-                          borderRadius:
-                          BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(20),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -361,15 +426,13 @@ class _ChatPageState extends State<ChatPage> {
                             Text(
                               _attachedFile!.path.split('/').last,
                               style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12),
+                                  color: Colors.white, fontSize: 12),
                             ),
                             const SizedBox(width: 6),
                             GestureDetector(
                               onTap: _removePdf,
                               child: const Icon(Icons.close,
-                                  size: 16,
-                                  color: Colors.white70),
+                                  size: 16, color: Colors.white70),
                             ),
                           ],
                         ),
@@ -377,57 +440,67 @@ class _ChatPageState extends State<ChatPage> {
                     Row(
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.add,
-                              color: Colors.white),
+                          icon: const Icon(Icons.add, color: Colors.white),
                           onPressed: _pickPdf,
                         ),
                         Expanded(
                           child: TextField(
                             controller: _controller,
-                            style: const TextStyle(
-                                color: Colors.white),
+                            style: const TextStyle(color: Colors.white),
                             decoration: const InputDecoration(
                               hintText: "Ask anything",
-                              hintStyle:
-                              TextStyle(color: Colors.white54),
+                              hintStyle: TextStyle(color: Colors.white54),
                               border: InputBorder.none,
                             ),
                           ),
                         ),
                         AnimatedSwitcher(
-                          duration:
-                          const Duration(milliseconds: 160),
-                          child: _hasText
+                          duration: const Duration(milliseconds: 160),
+                          transitionBuilder: (child, animation) {
+                            return ScaleTransition(
+                              scale: animation,
+                              child: child,
+                            );
+                          },
+                          child: _hasText || _attachedFile != null
                               ? Padding(
-                            key:
-                            const ValueKey("send"),
-                            padding:
-                            const EdgeInsets.only(left: 6),
+                            key: const ValueKey("send"),
+                            padding: const EdgeInsets.only(left: 6),
                             child: GestureDetector(
                               onTap: _sendMessage,
                               child: Container(
                                 width: 40,
                                 height: 40,
-                                decoration:
-                                const BoxDecoration(
+                                decoration: const BoxDecoration(
                                   color: Colors.white,
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(
-                                    Icons.arrow_upward,
+                                child: const Icon(Icons.arrow_upward,
                                     color: Colors.black),
                               ),
                             ),
                           )
                               : Padding(
-                            key:
-                            const ValueKey("mic"),
-                            padding:
-                            const EdgeInsets.only(left: 6),
-                            child: IconButton(
-                              icon: const Icon(Icons.mic,
-                                  color: Colors.white),
-                              onPressed: () {},
+                            key: ValueKey("mic_$_isListening"),
+                            padding: const EdgeInsets.only(left: 6),
+                            child: GestureDetector(
+                              onTap: _listen,
+                              child: Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: _isListening
+                                      ? Colors.redAccent.withOpacity(0.2)
+                                      : Colors.transparent,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  _isListening ? Icons.stop : Icons.mic,
+                                  color: _isListening
+                                      ? Colors.redAccent
+                                      : Colors.white,
+                                ),
+                              ),
                             ),
                           ),
                         ),
