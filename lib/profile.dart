@@ -1,9 +1,35 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'main.dart'; // Assume this is your HomePage
+import 'services/auth_service.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  String _fullName = 'User';
+  String _email = 'user@email.com';
+  final _authService = AuthService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUser();
+  }
+
+  Future<void> _loadUser() async {
+    final user = await _authService.getUser();
+    if (user != null && mounted) {
+      setState(() {
+        _fullName = user.fullName ?? 'User';
+        _email = user.email ?? 'user@email.com';
+      });
+    }
+  }
 
   void _openEdit(BuildContext context) {
     showModalBottomSheet(
@@ -14,12 +40,16 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  void _signOut(BuildContext context) {
-    // Điều hướng về HomePage khi Sign Out
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const HomePage()),
-    );
+  Future<void> _signOut(BuildContext context) async {
+    await _authService.logout();
+    if (mounted) {
+      // Điều hướng về HomePage khi Sign Out
+      // Use pushAndRemoveUntil to clear stack
+       Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const HomePage()),
+        (Route<dynamic> route) => false,
+      );
+    }
   }
 
   @override
@@ -53,12 +83,12 @@ class ProfilePage extends StatelessWidget {
               const SizedBox(height: 40),
 
               // AVATAR
-              const CircleAvatar(
+              CircleAvatar(
                 radius: 46,
                 backgroundColor: Colors.black,
                 child: Text(
-                  "Anh",
-                  style: TextStyle(
+                  _fullName.isNotEmpty ? _fullName.substring(0, min(_fullName.length, 2)).toUpperCase() : 'U',
+                  style: const TextStyle(
                     color: Color(0xFF00E676),
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -68,9 +98,9 @@ class ProfilePage extends StatelessWidget {
 
               const SizedBox(height: 12),
 
-              const Text(
-                "Nguyễn Anh Nhật Huy",
-                style: TextStyle(
+              Text(
+                _fullName,
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 22,
                   fontWeight: FontWeight.w600,
@@ -100,12 +130,12 @@ class ProfilePage extends StatelessWidget {
               // GLASS CARD
               _glassCard(
                 child: Column(
-                  children: const [
-                    _Item(Icons.email, "Email"),
-                    _Divider(),
-                    _Item(Icons.archive, "Archive"),
-                    _Divider(),
-                    _Item(Icons.folder, "Library"),
+                  children: [
+                    _Item(Icons.email, _email),
+                    const _Divider(),
+                    const _Item(Icons.archive, "Archive"),
+                    const _Divider(),
+                    const _Item(Icons.folder, "Library"),
                   ],
                 ),
               ),
@@ -131,8 +161,8 @@ class ProfilePage extends StatelessWidget {
                     ),
                     child: Row(
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.all(13),
+                        const Padding(
+                          padding: EdgeInsets.all(13),
                           child: Icon(Icons.exit_to_app, color: Colors.white), // Biểu tượng "Sign out"
                         ),
                         const Text(
@@ -154,6 +184,11 @@ class ProfilePage extends StatelessWidget {
       ),
     );
   }
+
+  int min(int a, int b) {
+    return a < b ? a : b;
+  }
+
 
   // ================= GLASS CARD =================
   static Widget _glassCard({required Widget child}) {

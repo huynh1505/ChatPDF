@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'register.dart';
+import 'services/auth_service.dart';
+import 'chat.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -10,6 +12,50 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   bool _hidePassword = true;
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _authService = AuthService();
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleLogin() async {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill in all fields')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    final response = await _authService.login(
+      _emailController.text,
+      _passwordController.text,
+    );
+
+    setState(() => _isLoading = false);
+
+    if (mounted) {
+      if (response.success) {
+        // Navigate to ChatPage (Home) on success
+        Navigator.pushReplacement(
+            context, MaterialPageRoute(builder: (_) => const ChatPage()));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response.message ?? 'Login failed'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -74,9 +120,10 @@ class _LoginPageState extends State<LoginPage> {
                   const SizedBox(height: 24),
 
                   /// EMAIL
-                  const _InputField(
+                  _InputField(
                     hint: 'Email',
                     icon: Icons.email_outlined,
+                    controller: _emailController,
                   ),
 
                   const SizedBox(height: 16),
@@ -85,6 +132,7 @@ class _LoginPageState extends State<LoginPage> {
                   _PasswordField(
                     hint: 'Password',
                     obscure: _hidePassword,
+                    controller: _passwordController,
                     onToggle: () {
                       setState(() {
                         _hidePassword = !_hidePassword;
@@ -99,9 +147,7 @@ class _LoginPageState extends State<LoginPage> {
                     width: double.infinity,
                     height: 52,
                     child: ElevatedButton(
-                      onPressed: () {
-                        // TODO: handle login
-                      },
+                      onPressed: _isLoading ? null : _handleLogin,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF00E676),
                         foregroundColor: Colors.black,
@@ -110,14 +156,16 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         elevation: 10,
                       ),
-                      child: const Text(
-                        'Sign in',
-                        style: TextStyle(
-                          fontFamily: 'Poppins',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                      child: _isLoading
+                          ? const CircularProgressIndicator(color: Colors.black)
+                          : const Text(
+                              'Sign in',
+                              style: TextStyle(
+                                fontFamily: 'Poppins',
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                     ),
                   ),
 
@@ -169,15 +217,18 @@ class _LoginPageState extends State<LoginPage> {
 class _InputField extends StatelessWidget {
   final String hint;
   final IconData icon;
+  final TextEditingController? controller;
 
   const _InputField({
     required this.hint,
     required this.icon,
+    this.controller,
   });
 
   @override
   Widget build(BuildContext context) {
     return TextField(
+      controller: controller, // Add controller
       style: const TextStyle(
         color: Colors.white,
         fontFamily: 'Poppins',
@@ -202,16 +253,19 @@ class _PasswordField extends StatelessWidget {
   final String hint;
   final bool obscure;
   final VoidCallback onToggle;
+  final TextEditingController? controller; // Add controller
 
   const _PasswordField({
     required this.hint,
     required this.obscure,
     required this.onToggle,
+    this.controller,
   });
 
   @override
   Widget build(BuildContext context) {
     return TextField(
+      controller: controller,
       obscureText: obscure,
       style: const TextStyle(
         color: Colors.white,
